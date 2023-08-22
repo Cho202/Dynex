@@ -488,9 +488,10 @@ int CryptoNoteProtocolHandler::handle_response_get_objects(int command, NOTIFY_R
       if (top == h) {
         logger(Logging::DEBUGGING) << "Found current top block in synced blocks, dismissing "
           << dismiss << "/" << arg.blocks.size() << " blocks";
-        while (dismiss--)
+        while (dismiss--) {
           arg.blocks.erase(arg.blocks.begin());
           parsed_blocks.erase(parsed_blocks.begin());
+        }
         break;
       }
       ++dismiss;
@@ -770,11 +771,16 @@ void CryptoNoteProtocolHandler::updateObservedHeight(uint32_t peerHeight, const 
       }
     }
   }
- {
+  {
     std::lock_guard<std::mutex> lock(m_blockchainHeightMutex);
     if (peerHeight > m_blockchainHeight) {
       m_blockchainHeight = peerHeight;
-      logger(Logging::INFO, Logging::BRIGHT_GREEN) << "New Top Block Detected: " << peerHeight;
+      int toSync = peerHeight - m_core.get_current_blockchain_height();
+      if (toSync > 1) {
+        logger(Logging::INFO, Logging::BRIGHT_GREEN) << "New Top Block Detected: " << peerHeight << " [" << toSync << " blocks ahead]";
+      } else {
+        logger(Logging::INFO, Logging::BRIGHT_GREEN) << "New Top Block Detected: " << peerHeight;
+      }
     }
   }
   if (updated) {
@@ -815,6 +821,10 @@ bool CryptoNoteProtocolHandler::addObserver(ICryptoNoteProtocolObserver* observe
 
 bool CryptoNoteProtocolHandler::removeObserver(ICryptoNoteProtocolObserver* observer) {
   return m_observerManager.remove(observer);
+}
+
+void CryptoNoteProtocolHandler::add_observer(ICryptoNoteProtocolObserver* observer) {
+  m_observerManager.add(observer);
 }
 
 };

@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2022, Dynex Developers
+// Copyright (c) 2021-2023, Dynex Developers
 // 
 // All rights reserved.
 // 
@@ -27,7 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // 
 // Parts of this project are originally copyright by:
-// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The DynexCN developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero project
 // Copyright (c) 2014-2018, The Forknote developers
 // Copyright (c) 2018, The TurtleCoin developers
@@ -36,24 +36,25 @@
 
 
 #include "crypto/crypto.h" //for rand()
-#include "CryptoNoteCore/Account.h"
-#include "CryptoNoteCore/CryptoNoteFormatUtils.h"
-#include "CryptoNoteCore/CryptoNoteTools.h"
+#include "DynexCNCore/Account.h"
+#include "DynexCNCore/DynexCNFormatUtils.h"
+#include "DynexCNCore/DynexCNTools.h"
 
 #include "WalletLegacy/WalletTransactionSender.h"
 #include "WalletLegacy/WalletUtils.h"
 
-#include "CryptoNoteCore/CryptoNoteBasicImpl.h"
+#include "DynexCNCore/DynexCNBasicImpl.h"
 
 #include <Logging/LoggerGroup.h>
 
 #include <random>
+#include <fstream>
 
 using namespace Crypto;
 
 namespace {
 
-using namespace CryptoNote;
+using namespace DynexCN;
 
 uint64_t countNeededMoney(uint64_t fee, const std::vector<WalletLegacyTransfer>& transfers) {
   uint64_t needed_money = fee;
@@ -75,8 +76,15 @@ void createChangeDestinations(const AccountPublicAddress& address, uint64_t need
   }
 }
 
-void constructTx(const AccountKeys keys, const std::vector<TransactionSourceEntry>& sources, const std::vector<TransactionDestinationEntry>& splittedDests,
-    const std::string& extra, uint64_t unlockTimestamp, uint64_t sizeLimit, Transaction& tx, Crypto::SecretKey& tx_key) {
+void constructTx(const AccountKeys keys, 
+                 const std::vector<TransactionSourceEntry>& sources, 
+                 const std::vector<TransactionDestinationEntry>& splittedDests,
+                 const std::string& extra, 
+                 uint64_t unlockTimestamp, 
+                 uint64_t sizeLimit, 
+                 Transaction& tx, 
+                 Crypto::SecretKey& tx_key) {
+
   std::vector<uint8_t> extraVec;
   extraVec.reserve(extra.size());
   std::for_each(extra.begin(), extra.end(), [&extraVec] (const char el) { extraVec.push_back(el);});
@@ -87,8 +95,7 @@ void constructTx(const AccountKeys keys, const std::vector<TransactionSourceEntr
   throwIf(!r, error::INTERNAL_WALLET_ERROR);
   throwIf(getObjectBinarySize(tx) >= sizeLimit, error::TRANSACTION_SIZE_TOO_BIG);
 
-  std::cout << "Info: This transaction used " << getObjectBinarySize(tx) << " bytes ";
-  std::cout << "(maximum " << sizeLimit << ")" << std::endl;
+  std::cout << "Info: This transaction used " << getObjectBinarySize(tx) << " bytes " << "(maximum " << sizeLimit << ")" << std::endl;
 }
 
 std::shared_ptr<WalletLegacyEvent> makeCompleteEvent(WalletUserTransactionsCache& transactionCache, size_t transactionId, std::error_code ec) {
@@ -98,7 +105,7 @@ std::shared_ptr<WalletLegacyEvent> makeCompleteEvent(WalletUserTransactionsCache
 
 } //namespace
 
-namespace CryptoNote {
+namespace DynexCN {
 
 WalletTransactionSender::WalletTransactionSender(const Currency& currency, WalletUserTransactionsCache& transactionsCache, AccountKeys keys, ITransfersContainer& transfersContainer) :
   m_currency(currency),
@@ -133,7 +140,7 @@ std::shared_ptr<WalletRequest> WalletTransactionSender::makeSendRequest(Transact
   mixIn = 0;
   /////////////////////////////////////////////////////////////////////
 
-  using namespace CryptoNote;
+  using namespace DynexCN;
 
   throwIf(transfers.empty(), error::ZERO_DESTINATION);
   validateTransfersAddresses(transfers);
@@ -158,10 +165,67 @@ std::shared_ptr<WalletRequest> WalletTransactionSender::makeSendRequest(Transact
   return doSendTransaction(context, events);
 }
 
+// offline transaction
+std::shared_ptr<WalletRequest> WalletTransactionSender::makeSignRequest(TransactionId& transactionId, std::deque<std::shared_ptr<WalletLegacyEvent>>& events,
+     Transaction& tx, Crypto::SecretKey tx_key, uint64_t amount, uint64_t fee) {
+
+    std::shared_ptr<SendTransactionContext> context = std::make_shared<SendTransactionContext>();
+
+    context->tx_key = tx_key;
+    context->foundMoney = amount;
+    context->mixIn = 0;
+    uint64_t neededMoney = (uint64_t)(amount/1000000000);
+
+    std::string extra = "";
+    std::vector<WalletLegacyTransfer> transfers;
+    uint64_t unlockTimestamp = 0;
+
+    transactionId = m_transactionsCache.addNewTransaction(neededMoney, fee, extra, transfers, unlockTimestamp);
+    
+    /// print tx:
+    std::cout << "-----------------------------------------------------------------------------------------" << std::endl;
+    std::cout << "SIGNING OFFLINE TRANSACTION" << std::endl;
+    std::cout << "-----------------------------------------------------------------------------------------" << std::endl;
+    //std::cout     << "tx_key           : " << Common::podToHex(tx_key) << std::endl;
+    std::cout     << "amount           : " << amount << std::endl;
+    std::cout     << "fee              : " << fee << std::endl;
+    std::cout     << "version          : " << tx.version << std::endl;
+    std::cout     << "unlockTime       : " << tx.unlockTime << std::endl;
+    std::cout     << "extra            : " << Common::podToHex(tx.extra) << std::endl;
+    std::cout     << "extra size       : " << tx.extra.size() << std::endl;
+
+    for (auto input: tx.inputs) {
+        DynexCN::KeyInput inp = boost::get<KeyInput>(input);
+        std::cout << "input - amount   : " << inp.amount << std::endl;
+        std::cout << "input - keyimage : " << Common::podToHex(inp.keyImage) << std::endl;
+        for (auto index : inp.outputIndexes) std::cout << "input outputIndex " << index << std::endl;
+    }
+    for (auto output : tx.outputs) {
+        std::cout << "output - amount  : " << output.amount << std::endl;
+        DynexCN::KeyOutput outt = boost::get<KeyOutput>(output.target);
+        std::cout << "output - target key : " << Common::podToHex(outt) << std::endl;
+    }
+    for (auto signatures : tx.signatures) {
+        std::cout << "signature(s)        : ";
+        for (auto signature : signatures) {
+          std::cout << Common::podToHex(signature) << " ";
+        }
+        std::cout << std::endl;
+    }
+    std::cout << "-----------------------------------------------------------------------------------------" << std::endl;
+
+    m_transactionsCache.updateTransaction(context->transactionId, tx, amount, context->selectedTransfers, context->tx_key);
+    std::error_code ec;
+    events.push_back(makeCompleteEvent(m_transactionsCache, context->transactionId, ec));
+
+    return std::make_shared<WalletRelayTransactionRequest>(tx, std::bind(&WalletTransactionSender::relayTransactionCallback, this, context,
+        std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+}
+
 std::shared_ptr<WalletRequest> WalletTransactionSender::makeSendDustRequest(TransactionId& transactionId, std::deque<std::shared_ptr<WalletLegacyEvent>>& events,
 	const std::vector<WalletLegacyTransfer>& transfers, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) {
 
-	using namespace CryptoNote;
+	using namespace DynexCN;
 
 	throwIf(transfers.empty(), error::ZERO_DESTINATION);
 	validateTransfersAddresses(transfers);
@@ -187,7 +251,7 @@ std::shared_ptr<WalletRequest> WalletTransactionSender::makeSendDustRequest(Tran
 std::shared_ptr<WalletRequest> WalletTransactionSender::makeSendFusionRequest(TransactionId& transactionId, std::deque<std::shared_ptr<WalletLegacyEvent>>& events,
 	const std::vector<WalletLegacyTransfer>& transfers, const std::list<TransactionOutputInformation>& fusionInputs, uint64_t fee, const std::string& extra, uint64_t mixIn, uint64_t unlockTimestamp) {
 
-	using namespace CryptoNote;
+	using namespace DynexCN;
 
 	throwIf(transfers.empty(), error::ZERO_DESTINATION);
 	validateTransfersAddresses(transfers);
@@ -250,7 +314,10 @@ void WalletTransactionSender::sendTransactionRandomOutsByAmount(std::shared_ptr<
     nextRequest = req;
 }
 
-std::shared_ptr<WalletRequest> WalletTransactionSender::doSendTransaction(std::shared_ptr<SendTransactionContext> context, std::deque<std::shared_ptr<WalletLegacyEvent>>& events) {
+std::shared_ptr<WalletRequest> WalletTransactionSender::doSendTransaction(
+      std::shared_ptr<SendTransactionContext> context, 
+      std::deque<std::shared_ptr<WalletLegacyEvent>>& events) {
+      
   if (m_isStoping) {
     events.push_back(makeCompleteEvent(m_transactionsCache, context->transactionId, make_error_code(error::TX_CANCELLED)));
     return std::shared_ptr<WalletRequest>();
@@ -261,7 +328,8 @@ std::shared_ptr<WalletRequest> WalletTransactionSender::doSendTransaction(std::s
     WalletLegacyTransaction& transaction = m_transactionsCache.getTransaction(context->transactionId);
 
     std::vector<TransactionSourceEntry> sources;
-    prepareInputs(context->selectedTransfers, context->outs, sources, context->mixIn);
+
+    prepareInputs(context->selectedTransfers, context->outs, sources, 0);
 
     TransactionDestinationEntry changeDts;
     changeDts.amount = 0;
@@ -496,32 +564,6 @@ uint64_t WalletTransactionSender::selectTransfersToSend(uint64_t neededMoney, bo
       idx = popRandomValue(randomGenerator, unusedUnmixable);
 	    selectOneUnmixable = false;
     } else {
-      /*
-      /// find idx with largest first:
-      
-      int found_idx = -1;
-      uint64_t amount_remaining = neededMoney - foundMoney;
-      uint64_t largest_amount = 0;
-      for (size_t i = 0; i < unusedTransfers.size(); i++) {
-          const auto& out = outputs[unusedTransfers[i]];
-std::cout << "*** DEBUG: out has " << out.amount << " looking for " << amount_remaining << " largest_amount=" << largest_amount << std::endl;
-          if (out.amount <= amount_remaining && out.amount > largest_amount) {
-                largest_amount = out.amount;
-                found_idx = unusedTransfers[i];
-          }
-      }
-      // found one?
-      if (found_idx!=-1) {
-        idx = found_idx;
-        popIdxValue(idx, unusedTransfers); ///PROBLEM////
-      } else {
-        // usual random:
-        idx = !unusedTransfers.empty() ? popRandomValue(randomGenerator, unusedTransfers) : popRandomValue(randomGenerator, unusedDust);
-      }
-      /////////////////////////////
-      */
-      //idx = !unusedTransfers.empty() ? popRandomValue(randomGenerator, unusedTransfers) : popRandomValue(randomGenerator, unusedDust);
-      
       //// FIX: only unusable dust available:
       if (unusedTransfers.empty() && unusedDust.empty() && !unusedUnmixable.empty()) {
           idx = popRandomValue(randomGenerator, unusedUnmixable);
@@ -600,4 +642,4 @@ uint64_t WalletTransactionSender::selectDustTransfersToSend(uint64_t neededMoney
 }
 
 
-} /* namespace CryptoNote */
+} /* namespace DynexCN */

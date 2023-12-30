@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2022, Dynex Developers
+// Copyright (c) 2021-2023, Dynex Developers
 // 
 // All rights reserved.
 // 
@@ -27,7 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // 
 // Parts of this project are originally copyright by:
-// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CN developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero project
 // Copyright (c) 2014-2018, The Forknote developers
 // Copyright (c) 2018, The TurtleCoin developers
@@ -74,8 +74,9 @@
 #include "Common/DnsTools.h"
 #include "Common/UrlTools.h"
 #include "Common/Util.h"
-#include "CryptoNoteCore/CryptoNoteFormatUtils.h"
-#include "CryptoNoteProtocol/CryptoNoteProtocolHandler.h"
+#include "DynexCNCore/DynexCNFormatUtils.h"
+#include "DynexCNCore/DynexCNTools.h"
+#include "DynexCNProtocol/DynexCNProtocolHandler.h"
 #include "NodeRpcProxy/NodeRpcProxy.h"
 #include "Rpc/CoreRpcServerCommandsDefinitions.h"
 #include "Rpc/HttpClient.h"
@@ -96,7 +97,7 @@
 
 #include "ITransfersContainer.h"
 
-using namespace CryptoNote;
+using namespace DynexCN;
 using namespace Logging;
 using Common::JsonValue;
 
@@ -199,19 +200,19 @@ private:
 };
 
 struct TransferCommand {
-  const CryptoNote::Currency& m_currency;
-  const CryptoNote::NodeRpcProxy& m_node;
+  const DynexCN::Currency& m_currency;
+  const DynexCN::NodeRpcProxy& m_node;
   size_t fake_outs_count;
-  std::vector<CryptoNote::WalletLegacyTransfer> dsts;
+  std::vector<DynexCN::WalletLegacyTransfer> dsts;
   std::vector<uint8_t> extra;
   uint64_t fee;
 #ifndef __ANDROID__
   std::map<std::string, std::vector<WalletLegacyTransfer>> aliases;
 #endif
 
-  TransferCommand(const CryptoNote::Currency& currency, const CryptoNote::NodeRpcProxy& node) :
+  TransferCommand(const DynexCN::Currency& currency, const DynexCN::NodeRpcProxy& node) :
     m_currency(currency), m_node(node), fake_outs_count(0), 
-    fee(m_node.getLastLocalBlockHeaderInfo().majorVersion < CryptoNote::BLOCK_MAJOR_VERSION_4 ?
+    fee(m_node.getLastLocalBlockHeaderInfo().majorVersion < DynexCN::BLOCK_MAJOR_VERSION_4 ?
     m_currency.minimumFee() : m_currency.roundUpMinFee(m_node.getMinimalFee(), 1)) { // Round up minimal fee to 1 digit after last leading zero by default
   }
 
@@ -258,22 +259,22 @@ struct TransferCommand {
               return false;
             }
 
-            if (m_node.getLastLocalBlockHeaderInfo().majorVersion < CryptoNote::BLOCK_MAJOR_VERSION_4 ? fee < m_currency.minimumFee() : fee < m_node.getMinimalFee()) {
+            if (m_node.getLastLocalBlockHeaderInfo().majorVersion < DynexCN::BLOCK_MAJOR_VERSION_4 ? fee < m_currency.minimumFee() : fee < m_node.getMinimalFee()) {
               logger(ERROR, BRIGHT_RED) << "Fee value is less than minimum: " 
-                << (m_node.getLastLocalBlockHeaderInfo().majorVersion < CryptoNote::BLOCK_MAJOR_VERSION_4 ? m_currency.minimumFee() : m_node.getMinimalFee());
+                << (m_node.getLastLocalBlockHeaderInfo().majorVersion < DynexCN::BLOCK_MAJOR_VERSION_4 ? m_currency.minimumFee() : m_node.getMinimalFee());
               return false;
             }
           }
         } else {
           WalletLegacyTransfer destination;
-          CryptoNote::TransactionDestinationEntry de;
+          DynexCN::TransactionDestinationEntry de;
 #ifndef __ANDROID__		  
 	  std::string aliasUrl;
 #endif
 
           if (!m_currency.parseAccountAddressString(arg, de.addr)) {
             Crypto::Hash paymentId;
-            if (CryptoNote::parsePaymentId(arg, paymentId)) {
+            if (DynexCN::parsePaymentId(arg, paymentId)) {
               logger(ERROR, BRIGHT_RED) << "Invalid payment ID usage. Please, use -p <payment_id>. See help for details.";
             } else {
 #ifndef __ANDROID__
@@ -402,7 +403,7 @@ std::string tryToOpenWalletOrLoadKeysOrThrow(LoggerRef& logger, std::unique_ptr<
     if (initError) { //bad password, or legacy format
       if (keysExists) {
         std::stringstream ss;
-        CryptoNote::importLegacyKeys(keys_file, password, ss);
+        DynexCN::importLegacyKeys(keys_file, password, ss);
         boost::filesystem::rename(keys_file, keys_file + ".back");
         boost::filesystem::rename(walletFileName, walletFileName + ".back");
 
@@ -414,7 +415,7 @@ std::string tryToOpenWalletOrLoadKeysOrThrow(LoggerRef& logger, std::unique_ptr<
         logger(INFO) << "Storing wallet...";
 
         try {
-          CryptoNote::WalletHelper::storeWallet(*wallet, walletFileName);
+          DynexCN::WalletHelper::storeWallet(*wallet, walletFileName);
         } catch (std::exception& e) {
           logger(ERROR, BRIGHT_RED) << "Failed to store wallet: " << e.what();
           throw std::runtime_error("error saving wallet file '" + walletFileName + "'");
@@ -430,7 +431,7 @@ std::string tryToOpenWalletOrLoadKeysOrThrow(LoggerRef& logger, std::unique_ptr<
     }
   } else if (keysExists) { //wallet not exists but keys presented
     std::stringstream ss;
-    CryptoNote::importLegacyKeys(keys_file, password, ss);
+    DynexCN::importLegacyKeys(keys_file, password, ss);
     boost::filesystem::rename(keys_file, keys_file + ".back");
 
     WalletHelper::InitWalletResultObserver initObserver;
@@ -448,7 +449,7 @@ std::string tryToOpenWalletOrLoadKeysOrThrow(LoggerRef& logger, std::unique_ptr<
     logger(INFO) << "Storing wallet...";
 
     try {
-      CryptoNote::WalletHelper::storeWallet(*wallet, walletFileName);
+      DynexCN::WalletHelper::storeWallet(*wallet, walletFileName);
     } catch(std::exception& e) {
       logger(ERROR, BRIGHT_RED) << "Failed to store wallet: " << e.what();
       throw std::runtime_error("error saving wallet file '" + walletFileName + "'");
@@ -663,7 +664,7 @@ bool simple_wallet::exit(const std::vector<std::string> &args) {
   return true;
 }
 
-simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::Currency& currency, Logging::LoggerManager& log) :
+simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const DynexCN::Currency& currency, Logging::LoggerManager& log) :
   m_dispatcher(dispatcher),
   m_daemon_port(0),
   m_daemon_path("/"),
@@ -707,6 +708,10 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_consoleHandler.setHandler("verify_message", boost::bind(&simple_wallet::verify_message, this, boost::placeholders::_1), "Verify a signature of the message");
   m_consoleHandler.setHandler("help", boost::bind(&simple_wallet::help, this, boost::placeholders::_1), "Show this help");
   m_consoleHandler.setHandler("exit", boost::bind(&simple_wallet::exit, this, boost::placeholders::_1), "Close wallet");
+  // offline-signature commands
+  m_consoleHandler.setHandler("export_to_offline", boost::bind(&simple_wallet::export_to_offline, this, boost::placeholders::_1), "Exports spendable outputs to be used with offline signature client to file <filename>");
+  m_consoleHandler.setHandler("send_offline_tx", boost::bind(&simple_wallet::send_offline_tx, this, boost::placeholders::_1), "Send a transaction generated by the offline signature client by using file <filename>");
+
 }
 //----------------------------------------------------------------------------------------------------
 
@@ -785,7 +790,7 @@ bool simple_wallet::get_tx_proof(const std::vector<std::string> &args)
   }
 
   const std::string address_string = args[1];
-  CryptoNote::AccountPublicAddress address;
+  DynexCN::AccountPublicAddress address;
   if (!m_currency.parseAccountAddressString(address_string, address)) {
      fail_msg_writer() << "Failed to parse address " << address_string;
      return true;
@@ -1405,7 +1410,7 @@ bool simple_wallet::new_wallet(const std::string &wallet_file, const std::string
 
 		try
 		{
-			CryptoNote::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
+			DynexCN::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
 		}
 		catch (std::exception& e)
 		{
@@ -1476,7 +1481,7 @@ bool simple_wallet::new_wallet(const std::string &wallet_file, const std::string
 
 		try
 		{
-			CryptoNote::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
+			DynexCN::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
 			//create wallet backup file
 			boost::filesystem::copy_file(m_wallet_file, boost::filesystem::change_extension(m_wallet_file, ".walletbak"));
 		}
@@ -1556,7 +1561,7 @@ bool simple_wallet::new_wallet(const std::string &wallet_file, const std::string
     }
 
     try {
-      CryptoNote::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
+      DynexCN::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
     } catch (std::exception& e) {
       fail_msg_writer() << "failed to save new wallet: " << e.what();
       throw;
@@ -1609,7 +1614,7 @@ bool simple_wallet::new_wallet(const std::string &wallet_file, const std::string
         }
 
         try {
-            CryptoNote::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
+            DynexCN::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
         }
         catch (std::exception& e) {
             fail_msg_writer() << "failed to save new wallet: " << e.what();
@@ -1667,7 +1672,7 @@ bool simple_wallet::new_tracking_wallet(AccountKeys &tracking_key, const std::st
         }
 
         try {
-            CryptoNote::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
+            DynexCN::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
         }
         catch (std::exception& e) {
             fail_msg_writer() << "failed to save new wallet: " << e.what();
@@ -1703,7 +1708,7 @@ bool simple_wallet::new_tracking_wallet(AccountKeys &tracking_key, const std::st
 bool simple_wallet::close_wallet()
 {
   try {
-    CryptoNote::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
+    DynexCN::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
   } catch (const std::exception& e) {
     fail_msg_writer() << e.what();
     return false;
@@ -1718,7 +1723,7 @@ bool simple_wallet::close_wallet()
 bool simple_wallet::save(const std::vector<std::string> &args)
 {
   try {
-    CryptoNote::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
+    DynexCN::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
     success_msg_writer() << "Wallet data saved";
   } catch (const std::exception& e) {
     fail_msg_writer() << e.what();
@@ -1788,7 +1793,7 @@ void simple_wallet::connectionStatusUpdated(bool connected) {
   }
 }
 //----------------------------------------------------------------------------------------------------
-void simple_wallet::externalTransactionCreated(CryptoNote::TransactionId transactionId)  {
+void simple_wallet::externalTransactionCreated(DynexCN::TransactionId transactionId)  {
   WalletLegacyTransaction txInfo;
   m_wallet->getTransaction(transactionId, txInfo);
   
@@ -1940,7 +1945,7 @@ bool simple_wallet::show_payments(const std::vector<std::string> &args) {
     paymentIds.reserve(hashes.size());
     std::transform(std::begin(hashes), std::end(hashes), std::back_inserter(paymentIds), [](const std::string& arg) {
       PaymentId paymentId;
-      if (!CryptoNote::parsePaymentId(arg, paymentId)) {
+      if (!DynexCN::parsePaymentId(arg, paymentId)) {
         throw std::runtime_error("payment ID has invalid format: \"" + arg + "\", expected 64-character string");
       }
 
@@ -2048,7 +2053,7 @@ std::string simple_wallet::getFeeAddress() {
 //----------------------------------------------------------------------------------------------------
 uint64_t simple_wallet::getMinimalFee() {
   uint64_t ret(0);
-  if (m_node->getLastLocalBlockHeaderInfo().majorVersion < CryptoNote::BLOCK_MAJOR_VERSION_4) {
+  if (m_node->getLastLocalBlockHeaderInfo().majorVersion < DynexCN::BLOCK_MAJOR_VERSION_4) {
     ret = m_currency.minimumFee();
   } else {
     // round fee to 2 digits after leading zeroes
@@ -2056,6 +2061,200 @@ uint64_t simple_wallet::getMinimalFee() {
   }
   return ret;
 }
+//----------------------------------------------------------------------------------------------------
+// offline signature commands:
+bool simple_wallet::export_to_offline(const std::vector<std::string> &args) {
+  std::string filename = args[0];
+
+  std::vector<TransactionOutputInformation> outputs;
+  outputs = m_wallet->getUnlockedOutputs();
+
+  std::ofstream fout(filename);
+  if (fout.is_open()) {
+    int num_outs = outputs.size();
+    fout.write(reinterpret_cast<char*>(&num_outs), sizeof(num_outs));
+    for (auto& t : outputs) {
+          //fout.write(reinterpret_cast<char*>(&t.type), sizeof(t.type));
+          fout.write(reinterpret_cast<char*>(&t.amount), sizeof(t.amount));
+          fout.write(reinterpret_cast<char*>(&t.globalOutputIndex), sizeof(t.globalOutputIndex));
+          fout.write(reinterpret_cast<char*>(&t.outputInTransaction), sizeof(t.outputInTransaction));
+          fout.write(reinterpret_cast<char*>(&t.transactionHash), sizeof(t.transactionHash));
+          fout.write(reinterpret_cast<char*>(&t.transactionPublicKey), sizeof(t.transactionPublicKey));
+          fout.write(reinterpret_cast<char*>(&t.outputKey), sizeof(t.outputKey));
+          fout.write(reinterpret_cast<char*>(&t.requiredSignatures), sizeof(t.requiredSignatures));
+    }
+
+    fout.close();
+  }
+
+  //print outputs:
+  for (const auto& t : outputs) {
+      //std::cout << "type : " << t.type << std::endl;
+      std::cout << "amount : " << t.amount << std::endl;
+      std::cout << "globalOutputIndex : " << t.globalOutputIndex << std::endl;
+      std::cout << "outputInTransaction : " << t.outputInTransaction << std::endl;
+      std::cout << "transactionHash : " << Common::podToHex(t.transactionHash) << std::endl;
+      std::cout << "transactionPublicKey : " << Common::podToHex(t.transactionPublicKey) << std::endl;
+      std::cout << "outputKey : " << Common::podToHex(t.outputKey) << std::endl;
+      std::cout << "requiredSignatures : " << t.requiredSignatures << std::endl;
+      std::cout << std::endl;
+  }
+
+  success_msg_writer() << "Output keys have been exported to " << filename;
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::send_offline_tx(const std::vector<std::string> &args) {
+  std::string filename = args[0];
+
+  try {
+      // read tx file:    
+      std::ifstream fout(filename, std::ios::binary);
+      Transaction tx;
+      Crypto::SecretKey tx_key;
+      Crypto::Hash tx_prefix_hash;
+      uint64_t total_inputs = 0;
+      uint64_t total_outputs = 0;
+      uint64_t amount = 0;
+      uint64_t fee = 0;
+
+      if (fout.is_open()) {
+          fout.read(reinterpret_cast<char*>(&tx.version), sizeof(tx.version));
+          fout.read(reinterpret_cast<char*>(&tx.unlockTime), sizeof(tx.unlockTime));
+          int extrasize;
+          fout.read(reinterpret_cast<char*>(&extrasize), sizeof(extrasize));
+          //std::cout << "LOADING: extrasize = " << extrasize << std::endl;
+          tx.extra.resize(extrasize);
+          for (int i=0; i<extrasize; i++)
+              fout.read(reinterpret_cast<char*>(&tx.extra[i]), sizeof(tx.extra[i]));
+          //for (int i=0; i<tx.extra.size(); i++)
+          //    std::cout << "0x" << Common::podToHex(tx.extra[i])<<", ";
+          //std::cout << std::endl;
+
+          // inputs:
+          int num_ins;
+          fout.read(reinterpret_cast<char*>(&num_ins), sizeof(num_ins));
+          //std::cout << "LOADING: num_ins = " << num_ins << std::endl;
+          for (int i=0; i<num_ins; i++) {
+              DynexCN::KeyInput inp;
+              fout.read(reinterpret_cast<char*>(&inp.amount), sizeof(inp.amount));
+              fout.read(reinterpret_cast<char*>(&inp.keyImage), sizeof(inp.keyImage));
+              int num_indices;
+              fout.read(reinterpret_cast<char*>(&num_indices), sizeof(num_indices));
+              for (int j=0; j<num_indices; j++) {
+                 uint32_t idx;
+                 fout.read(reinterpret_cast<char*>(&idx), sizeof(idx));
+                 inp.outputIndexes.push_back(idx);
+              }
+              tx.inputs.push_back(inp);
+              total_inputs += inp.amount;
+          }
+          // outputs:
+          int num_outs;
+          fout.read(reinterpret_cast<char*>(&num_outs), sizeof(num_outs));
+          //std::cout << "LOADING: num_outs = " << num_outs << std::endl;
+          for (int i=0; i<num_outs; i++) {
+              DynexCN::TransactionOutput output;    
+              fout.read(reinterpret_cast<char*>(&output.amount), sizeof(output.amount));
+              DynexCN::KeyOutput outt;
+              fout.read(reinterpret_cast<char*>(&outt.key), sizeof(outt.key));
+              output.target = outt;
+              tx.outputs.push_back(output);
+              total_outputs += output.amount;
+          }
+          // signatures:
+          int num_sig;
+          fout.read(reinterpret_cast<char*>(&num_sig), sizeof(num_sig));
+          //std::cout << "LOADING: num_sig = " << num_sig << std::endl;
+          for (int i=0; i<num_sig; i++) {
+              std::vector<Crypto::Signature> signatures;      
+              int num_sig_sub;
+              fout.read(reinterpret_cast<char*>(&num_sig_sub), sizeof(num_sig_sub));
+              //std::cout << "LOADING: num_sig_sub = " << num_sig_sub << std::endl;              
+              for (int j=0; j<num_sig_sub; j++) {
+                  Crypto::Signature signature;
+                  fout.read(reinterpret_cast<char*>(&signature), sizeof(signature));
+                  signatures.push_back(signature);
+              }
+              tx.signatures.push_back(signatures);
+          }
+
+          //tx_key:
+          fout.read(reinterpret_cast<char*>(&tx_key), sizeof(tx_key));
+
+          // update amounts & fee:
+          amount = total_inputs;
+          fee = total_inputs - total_outputs;
+
+          //tx_prefix_hash:
+          getObjectHash(*static_cast<DynexCN::TransactionPrefix*>(&tx), tx_prefix_hash);
+
+          fout.close();
+
+      } else {
+          fail_msg_writer() << "file " << filename << " not found.";
+          return true;
+      }
+
+      /// print tx:
+      /*
+      std::cout     << "tx_key           : " << Common::podToHex(tx_key) << std::endl;
+      std::cout     << "tx_prefix_hash   : " << Common::podToHex(tx_prefix_hash) << std::endl;
+      std::cout     << "amount           : " << amount << std::endl;
+      std::cout     << "fee              : " << fee << std::endl;
+      std::cout     << "version          : " << tx.version << std::endl;
+      std::cout     << "unlockTime       : " << tx.unlockTime << std::endl;
+      std::cout     << "extra            : " << Common::podToHex(tx.extra) << std::endl;
+      std::cout     << "extra size       : " << tx.extra.size() << std::endl;
+
+      for (auto input: tx.inputs) {
+          DynexCN::KeyInput inp = boost::get<KeyInput>(input);
+          std::cout << "input - amount   : " << inp.amount << std::endl;
+          std::cout << "input - keyimage : " << Common::podToHex(inp.keyImage) << std::endl;
+          for (auto index : inp.outputIndexes) std::cout << "input outputIndex " << index << std::endl;
+      }
+      for (auto output : tx.outputs) {
+          std::cout << "output - amount  : " << output.amount << std::endl;
+          DynexCN::KeyOutput outt = boost::get<KeyOutput>(output.target);
+          std::cout << "output - target key : " << Common::podToHex(outt) << std::endl;
+      }
+      for (auto signatures : tx.signatures) {
+          std::cout << "signature(s)        : ";
+          for (auto signature : signatures) {
+            std::cout << Common::podToHex(signature) << " ";
+          }
+          std::cout << std::endl;
+      }
+      */
+
+      std::cout << "Transaction loaded, sending..." << std::endl;
+
+      DynexCN::WalletHelper::SendCompleteResultObserver sent;
+      WalletHelper::IWalletRemoveObserverGuard removeGuard(*m_wallet, sent);
+
+      // tx reconstructed, now execute:
+      DynexCN::TransactionId txid = m_wallet->signTransaction(tx, tx_key, amount, fee);
+      if (txid == WALLET_LEGACY_INVALID_TRANSACTION_ID) {
+          fail_msg_writer() << "Can't send money";
+          return true;
+      }
+
+      removeGuard.removeObserver();
+      
+  } catch (const std::system_error& e) {
+    fail_msg_writer() << e.what();
+  } catch (const std::exception& e) {
+    fail_msg_writer() << e.what();
+  } catch (...) {
+    fail_msg_writer() << "unknown error";
+  }
+  
+  success_msg_writer() << "Transaction file " << filename << " has been sent";
+  return true;
+}
+
+
+
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::transfer(const std::vector<std::string> &args) {
   if (m_trackingWallet){
@@ -2096,25 +2295,23 @@ bool simple_wallet::transfer(const std::vector<std::string> &args) {
 		}
 
 		for (auto& kv : cmd.aliases) {
-			std::copy(std::move_iterator<std::vector<WalletLegacyTransfer>::iterator>(kv.second.begin()),
+			  std::copy(std::move_iterator<std::vector<WalletLegacyTransfer>::iterator>(kv.second.begin()),
 				std::move_iterator<std::vector<WalletLegacyTransfer>::iterator>(kv.second.end()),
 				std::back_inserter(cmd.dsts));
 		}
 	}
 #endif
 
-    CryptoNote::WalletHelper::SendCompleteResultObserver sent;
+    DynexCN::WalletHelper::SendCompleteResultObserver sent;
 
     std::string extraString;
     std::copy(cmd.extra.begin(), cmd.extra.end(), std::back_inserter(extraString));
 
     WalletHelper::IWalletRemoveObserverGuard removeGuard(*m_wallet, sent);
 
-    ////// FORCE MIXIN = 0 //////////////////////////////////////////////
-    cmd.fake_outs_count = 0;
-    /////////////////////////////////////////////////////////////////////
-
-    CryptoNote::TransactionId tx = m_wallet->sendTransaction(cmd.dsts, cmd.fee, extraString, cmd.fake_outs_count, 0);
+    cmd.fake_outs_count = 0; // Force Mixin=0 
+    
+    DynexCN::TransactionId tx = m_wallet->sendTransaction(cmd.dsts, cmd.fee, extraString, cmd.fake_outs_count, 0);
     if (tx == WALLET_LEGACY_INVALID_TRANSACTION_ID) {
       fail_msg_writer() << "Can't send money";
       return true;
@@ -2128,12 +2325,12 @@ bool simple_wallet::transfer(const std::vector<std::string> &args) {
       return true;
     }
 
-    CryptoNote::WalletLegacyTransaction txInfo;
+    DynexCN::WalletLegacyTransaction txInfo;
     m_wallet->getTransaction(tx, txInfo);
-    success_msg_writer(true) << "Money successfully sent, transaction id: " << Common::podToHex(txInfo.hash) << ", key: " << Common::podToHex(txInfo.secretKey);
+    success_msg_writer(true) << "Money successfully sent, transaction id: " << Common::podToHex(txInfo.hash) << ", key: " << Common::podToHex(txInfo.secretKey) << " (non-privacy transaction)";
 
     try {
-      CryptoNote::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
+      DynexCN::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
     } catch (const std::exception& e) {
       fail_msg_writer() << e.what();
       return true;
@@ -2157,7 +2354,7 @@ bool simple_wallet::sweep_dust(const std::vector<std::string>& args) {
 	try {
 		WalletLegacyTransfer destination;
 		destination.address = m_wallet->getAddress();
-		CryptoNote::TransactionDestinationEntry de;
+		DynexCN::TransactionDestinationEntry de;
 		if (0 == args.size()) {
 			destination.amount = m_wallet->dustBalance();
 		}
@@ -2170,14 +2367,14 @@ bool simple_wallet::sweep_dust(const std::vector<std::string>& args) {
 			destination.amount = de.amount;	
 		}
 		
-		CryptoNote::WalletHelper::SendCompleteResultObserver sent;
+		DynexCN::WalletHelper::SendCompleteResultObserver sent;
 		std::string extraString;
 
 		WalletHelper::IWalletRemoveObserverGuard removeGuard(*m_wallet, sent);
 
 		std::vector<WalletLegacyTransfer> transfers;
 		transfers.push_back(destination);
-		CryptoNote::TransactionId tx = m_wallet->sendDustTransaction(transfers, getMinimalFee(), extraString, 0, 0);
+		DynexCN::TransactionId tx = m_wallet->sendDustTransaction(transfers, getMinimalFee(), extraString, 0, 0);
 		if (tx == WALLET_LEGACY_INVALID_TRANSACTION_ID) {
 			fail_msg_writer() << "Can't send money";
 			return true;
@@ -2191,12 +2388,12 @@ bool simple_wallet::sweep_dust(const std::vector<std::string>& args) {
 			return true;
 		}
 
-		CryptoNote::WalletLegacyTransaction txInfo;
+		DynexCN::WalletLegacyTransaction txInfo;
 		m_wallet->getTransaction(tx, txInfo);
 		success_msg_writer(true) << "Money successfully sent, transaction " << Common::podToHex(txInfo.hash);
 
 		try {
-			CryptoNote::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
+			DynexCN::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
 		}
 		catch (const std::exception& e) {
 			fail_msg_writer() << e.what();
@@ -2300,12 +2497,12 @@ bool simple_wallet::optimize(const std::vector<std::string>& args) {
 	}
 
 	try {
-		CryptoNote::WalletHelper::SendCompleteResultObserver sent;
+		DynexCN::WalletHelper::SendCompleteResultObserver sent;
 		std::string extraString;
 
 		WalletHelper::IWalletRemoveObserverGuard removeGuard(*m_wallet, sent);
 
-		CryptoNote::TransactionId tx = m_wallet->sendFusionTransaction(fusionInputs, 0, extraString, mixIn, 0);
+		DynexCN::TransactionId tx = m_wallet->sendFusionTransaction(fusionInputs, 0, extraString, mixIn, 0);
 		if (tx == WALLET_LEGACY_INVALID_TRANSACTION_ID) {
 			fail_msg_writer() << "Can't send money";
 			return true;
@@ -2319,12 +2516,12 @@ bool simple_wallet::optimize(const std::vector<std::string>& args) {
 			return true;
 		}
 
-		CryptoNote::WalletLegacyTransaction txInfo;
+		DynexCN::WalletLegacyTransaction txInfo;
 		m_wallet->getTransaction(tx, txInfo);
 		success_msg_writer(true) << "Fusion transaction successfully sent, hash: " << Common::podToHex(txInfo.hash);
 
 		try {
-			CryptoNote::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
+			DynexCN::WalletHelper::storeWallet(*m_wallet, m_wallet_file);
 		}
 		catch (const std::exception& e) {
 			fail_msg_writer() << e.what();
@@ -2391,7 +2588,7 @@ bool simple_wallet::verify_message(const std::vector<std::string> &args) {
   std::string message = args[0];
   std::string address_string = args[1];
   std::string signature = args[2];
-  CryptoNote::AccountPublicAddress address;
+  DynexCN::AccountPublicAddress address;
   if (!m_currency.parseAccountAddressString(address_string, address)) {
     fail_msg_writer() << "failed to parse address " << address_string;
 	return true;
@@ -2479,8 +2676,8 @@ int main(int argc, char* argv[]) {
     po::store(command_line::parse_command_line(argc, argv, desc_general, true), vm);
 
     if (command_line::get_arg(vm, command_line::arg_help)) {
-      CryptoNote::Currency tmp_currency = CryptoNote::CurrencyBuilder(logManager).currency();
-      CryptoNote::simple_wallet tmp_wallet(dispatcher, tmp_currency, logManager);
+      DynexCN::Currency tmp_currency = DynexCN::CurrencyBuilder(logManager).currency();
+      DynexCN::simple_wallet tmp_wallet(dispatcher, tmp_currency, logManager);
 
       std::cout << CRYPTONOTE_NAME << " wallet v" << CN_PROJECT_VERSION_LONG << std::endl;
       std::cout << "Usage: simplewallet [--wallet-file=<file>|--generate-new-wallet=<file>] [--daemon-address=<host>:<port>] [<COMMAND>]";
@@ -2539,7 +2736,7 @@ int main(int argc, char* argv[]) {
   logger(INFO) << "DYNEX NEUROMORPHIC COMPUTING PLATFORM";
   logger(INFO) << "-------------------------------------";
 
-  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logManager).
+  DynexCN::Currency currency = DynexCN::CurrencyBuilder(logManager).
     testnet(command_line::get_arg(vm, arg_testnet)).currency();
 
   if (command_line::has_arg(vm, Tools::wallet_rpc_server::arg_rpc_bind_port)) {
@@ -2623,7 +2820,7 @@ int main(int argc, char* argv[]) {
     
     try {
       logger(INFO) << "Storing wallet...";
-      CryptoNote::WalletHelper::storeWallet(*wallet, walletFileName);
+      DynexCN::WalletHelper::storeWallet(*wallet, walletFileName);
       logger(INFO, BRIGHT_GREEN) << "Stored ok";
     } catch (const std::exception& e) {
       logger(ERROR, BRIGHT_RED) << "Failed to store wallet: " << e.what();
@@ -2631,7 +2828,7 @@ int main(int argc, char* argv[]) {
     }
   } else {
     //runs wallet with console interface
-    CryptoNote::simple_wallet wal(dispatcher, currency, logManager);
+    DynexCN::simple_wallet wal(dispatcher, currency, logManager);
     
     if (!wal.init(vm)) {
       logger(ERROR, BRIGHT_RED) << "Failed to initialize wallet"; 
@@ -2639,8 +2836,14 @@ int main(int argc, char* argv[]) {
     }
 
     std::vector<std::string> command = command_line::get_arg(vm, arg_command);
-    if (!command.empty())
-      wal.process_command(command);
+    if (!command.empty()) {
+      try {
+          wal.process_command(command);
+      } catch (const std::exception& e) {
+          logger(ERROR, BRIGHT_RED) << "Error: " << e.what();
+      return 1;
+      }
+    }
 
     Tools::SignalHandler::install([&wal] {
       wal.stop();

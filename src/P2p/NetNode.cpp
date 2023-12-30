@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2022, Dynex Developers
+// Copyright (c) 2021-2023, Dynex Developers
 // 
 // All rights reserved.
 // 
@@ -27,7 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // 
 // Parts of this project are originally copyright by:
-// Copyright (c) 2012-2016, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2012-2016, The CN developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero project
 // Copyright (c) 2014-2018, The Forknote developers
 // Copyright (c) 2018, The TurtleCoin developers
@@ -40,6 +40,7 @@
 #include <algorithm>
 #include <fstream>
 #include <ctime>
+#include <chrono>
 
 #include <boost/foreach.hpp>
 #include <boost/uuid/random_generator.hpp>
@@ -74,7 +75,7 @@
 
 using namespace Common;
 using namespace Logging;
-using namespace CryptoNote;
+using namespace DynexCN;
 
 namespace {
 
@@ -86,10 +87,9 @@ size_t get_random_index_with_fixed_probability(size_t max_index) {
   return (x*x*x) / (max_index*max_index); //parabola \/
 }
 
-
 void addPortMapping(Logging::LoggerRef& logger, uint32_t port) {
   // Add UPnP port mapping
-  logger(INFO) << "Attempting to add IGD port mapping.";
+  logger(INFO) << "Attempting to add IGD port mapping for TCP " << std::to_string(port) << ".";
   int result;
   UPNPDev* deviceList = upnpDiscover(1000, NULL, NULL, 0, 0, 2, &result);
   UPNPUrls urls;
@@ -102,7 +102,7 @@ void addPortMapping(Logging::LoggerRef& logger, uint32_t port) {
       std::ostringstream portString;
       portString << port;
       if (UPNP_AddPortMapping(urls.controlURL, igdData.first.servicetype, portString.str().c_str(),
-        portString.str().c_str(), lanAddress, CryptoNote::CRYPTONOTE_NAME, "TCP", 0, "0") != 0) {
+        portString.str().c_str(), lanAddress, DynexCN::CRYPTONOTE_NAME, "TCP", 0, "0") != 0) {
         logger(ERROR) << "UPNP_AddPortMapping failed.";
       } else {
         logger(INFO, BRIGHT_GREEN) << "Added IGD port mapping.";
@@ -128,12 +128,12 @@ bool parse_peer_from_string(NetworkAddress& pe, const std::string& node_addr) {
 }
 
 
-namespace CryptoNote
+namespace DynexCN
 {
   namespace
   {
     const command_line::arg_descriptor<std::string> arg_p2p_bind_ip        = {"p2p-bind-ip", "Interface for p2p network protocol", "0.0.0.0"};
-    const command_line::arg_descriptor<std::string> arg_p2p_bind_port      = {"p2p-bind-port", "Port for p2p network protocol", std::to_string(CryptoNote::P2P_DEFAULT_PORT)};
+    const command_line::arg_descriptor<std::string> arg_p2p_bind_port      = {"p2p-bind-port", "Port for p2p network protocol", std::to_string(DynexCN::P2P_DEFAULT_PORT)};
     const command_line::arg_descriptor<uint32_t>    arg_p2p_external_port  = {"p2p-external-port", "External port for p2p network protocol (if port forwarding used with NAT)", 0};
     const command_line::arg_descriptor<bool>        arg_p2p_allow_local_ip = {"allow-local-ip", "Allow local ip add to peer list, mostly in debug purposes"};
     const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_add_peer   = {"add-peer", "Manually add peer to local peerlist"};
@@ -233,21 +233,19 @@ namespace CryptoNote
     return ret;
   }
 
-  NodeServer::NodeServer(System::Dispatcher& dispatcher, CryptoNote::CryptoNoteProtocolHandler& payload_handler, Logging::ILogger& log) :
+  NodeServer::NodeServer(System::Dispatcher& dispatcher, DynexCN::DynexCNProtocolHandler& payload_handler, Logging::ILogger& log) :
     m_dispatcher(dispatcher),
     m_workingContextGroup(dispatcher),
     m_payload_handler(payload_handler),
     m_allow_local_ip(false),
     m_hide_my_port(false),
-    m_network_id(BYTECOIN_NETWORK),
+    m_network_id(DYNEX_NETWORK),
     logger(log, "node_server"),
     m_stopEvent(m_dispatcher),
     m_idleTimer(m_dispatcher),
     m_timedSyncTimer(m_dispatcher),
     m_timeoutTimer(m_dispatcher),
     m_stop(false),
-    // intervals
-    // m_peer_handshake_idle_maker_interval(CryptoNote::P2P_DEFAULT_HANDSHAKE_INTERVAL),
     m_connections_maker_interval(1),
     m_peerlist_store_interval(60*30, false) {
   }
@@ -273,7 +271,7 @@ namespace CryptoNote
     if (cmd.isResponse && cmd.command == COMMAND_TIMED_SYNC::ID) {
       if (!handleTimedSyncResponse(cmd.buf, ctx)) {
         // invalid response, close connection
-        ctx.m_state = CryptoNoteConnectionContext::state_shutdown;
+        ctx.m_state = DynexCNConnectionContext::state_shutdown;
       }
       return 0;
     }
@@ -326,7 +324,7 @@ namespace CryptoNote
         if (!p2p_data.fail()) {
           StdInputStream inputStream(p2p_data);
           BinaryInputStreamSerializer a(inputStream);
-          CryptoNote::serialize(*this, a);
+          DynexCN::serialize(*this, a);
           loaded = true;
         }
       } catch (const std::exception& e) {
@@ -338,13 +336,13 @@ namespace CryptoNote
       }
 
       //at this moment we have hardcoded config
-      m_config.m_net_config.handshake_interval = CryptoNote::P2P_DEFAULT_HANDSHAKE_INTERVAL;
-      m_config.m_net_config.connections_count = CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT;
-      m_config.m_net_config.packet_max_size = CryptoNote::P2P_DEFAULT_PACKET_MAX_SIZE; //20 MB limit
+      m_config.m_net_config.handshake_interval = DynexCN::P2P_DEFAULT_HANDSHAKE_INTERVAL;
+      m_config.m_net_config.connections_count = DynexCN::P2P_DEFAULT_CONNECTIONS_COUNT;
+      m_config.m_net_config.packet_max_size = DynexCN::P2P_DEFAULT_PACKET_MAX_SIZE; //20 MB limit
       m_config.m_net_config.config_id = 0; // initial config
-      m_config.m_net_config.connection_timeout = CryptoNote::P2P_DEFAULT_CONNECTION_TIMEOUT;
-      m_config.m_net_config.ping_connection_timeout = CryptoNote::P2P_DEFAULT_PING_CONNECTION_TIMEOUT;
-      m_config.m_net_config.send_peerlist_sz = CryptoNote::P2P_DEFAULT_PEERS_IN_HANDSHAKE;
+      m_config.m_net_config.connection_timeout = DynexCN::P2P_DEFAULT_CONNECTION_TIMEOUT;
+      m_config.m_net_config.ping_connection_timeout = DynexCN::P2P_DEFAULT_PING_CONNECTION_TIMEOUT;
+      m_config.m_net_config.send_peerlist_sz = DynexCN::P2P_DEFAULT_PEERS_IN_HANDSHAKE;
 
       m_first_connection_maker_call = true;
     } catch (const std::exception& e) {
@@ -355,7 +353,7 @@ namespace CryptoNote
   }
 
   //----------------------------------------------------------------------------------- 
-  void NodeServer::for_each_connection(std::function<void(CryptoNoteConnectionContext&, PeerIdType)> f)
+  void NodeServer::for_each_connection(std::function<void(DynexCNConnectionContext&, PeerIdType)> f)
   {
     for (auto& ctx : m_connections) {
       f(ctx.second, ctx.second.peerId);
@@ -384,7 +382,7 @@ namespace CryptoNote
     // drop any connection to that IP
     forEachConnection([&](P2pConnectionContext& context) {
       if (context.m_remote_ip == address_ip) {
-        context.m_state = CryptoNoteConnectionContext::state_shutdown;
+        context.m_state = DynexCNConnectionContext::state_shutdown;
       }
     });
 	logger(INFO) << "Host " << Common::ipAddressToString(address_ip) << " blocked.";
@@ -449,12 +447,12 @@ namespace CryptoNote
   }
   //-----------------------------------------------------------------------------------
 
-  void NodeServer::drop_connection(CryptoNoteConnectionContext& context, bool add_fail)
+  void NodeServer::drop_connection(DynexCNConnectionContext& context, bool add_fail)
   {
     if (add_fail)
       add_host_fail(context.m_remote_ip);
 
-    context.m_state = CryptoNoteConnectionContext::state_shutdown;
+    context.m_state = DynexCNConnectionContext::state_shutdown;
   }
   //-----------------------------------------------------------------------------------
 
@@ -548,10 +546,9 @@ namespace CryptoNote
 
 
   //-----------------------------------------------------------------------------------
-  
   bool NodeServer::init(const NetNodeConfig& config) {
     if (!config.getTestnet()) {
-      for (auto seed : CryptoNote::SEED_NODES) {
+      for (auto seed : DynexCN::SEED_NODES) {
         append_net_address(m_seed_nodes, seed);
       }
     } else {
@@ -585,12 +582,8 @@ namespace CryptoNote
     m_last_stat_request_time = 0;
 #endif
 
-    //configure self
-    // m_net_server.get_config_object().m_pcommands_handler = this;
-    // m_net_server.get_config_object().m_invoke_timeout = CryptoNote::P2P_DEFAULT_INVOKE_TIMEOUT;
-
-	logger(INFO) << "Network: " << m_network_id;
-
+    logger(INFO) << "Network (non-privacy): " << m_network_id;
+    
     //try to bind
     logger(INFO) << "Binding on " << m_bind_ip << ":" << m_port;
     m_listeningPort = Common::fromString<uint16_t>(m_port);
@@ -602,13 +595,13 @@ namespace CryptoNote
     if(m_external_port)
       logger(INFO) << "External port defined as " << m_external_port;
 
-    addPortMapping(logger, m_listeningPort);
+    addPortMapping(logger, m_external_port?m_external_port:m_listeningPort);
 
     return true;
   }
   //-----------------------------------------------------------------------------------
   
-  CryptoNote::CryptoNoteProtocolHandler& NodeServer::get_payload_object()
+  DynexCN::DynexCNProtocolHandler& NodeServer::get_payload_object()
   {
     return m_payload_handler;
   }
@@ -663,7 +656,7 @@ namespace CryptoNote
 
       StdOutputStream stream(p2p_data);
       BinaryOutputStreamSerializer a(stream);
-      CryptoNote::serialize(*this, a);
+      DynexCN::serialize(*this, a);
       return true;
     } catch (const std::exception& e) {
       logger(TRACE) << "store_config failed: " << e.what();
@@ -709,7 +702,8 @@ namespace CryptoNote
   }
 
   //----------------------------------------------------------------------------------- 
-  bool NodeServer::handshake(CryptoNote::LevinProtocol& proto, P2pConnectionContext& context, bool just_take_peerlist) {
+  bool NodeServer::handshake(DynexCN::LevinProtocol& proto, P2pConnectionContext& context, bool just_take_peerlist) {
+
     COMMAND_HANDSHAKE::request arg;
     COMMAND_HANDSHAKE::response rsp;
     get_local_node_data(arg.node_data);
@@ -727,53 +721,18 @@ namespace CryptoNote
       return false;
     }
 
-    std::stringstream ss;
-    ss << CN_PROJECT_VERSION;
-    std::string lvs;
-    ss >> lvs;
-
-    // only allow current version. will be enforced from specific date:
-	if (rsp.node_data.node_version!=lvs) {
-	    logger(Logging::DEBUGGING) << context << "COMMAND_HANDSHAKE Failed, wrong daemon version!  (" << rsp.node_data.node_version << "), closing connection.";
-	    return false;
-	} 
-
+    // only allow current version
+  	if (rsp.node_data.node_version != CN_PROJECT_VERSION) {
+  	    logger(Logging::DEBUGGING) << context << "COMMAND_HANDSHAKE Failed, wrong daemon version!  (" << rsp.node_data.node_version << "), closing connection.";
+  	    return false;
+  	} 
     // ---
 
-	  // Check for latest Daemon version (unused from here)
-    std::string remote_version = boost::replace_all_copy(rsp.node_data.node_version, ".", "");
-    std::string remote_version_str = rsp.node_data.node_version;
-    remote_version_str.erase(std::remove(remote_version_str.begin(), remote_version_str.end(), '\n'), remote_version_str.end());          
-      
-    auto local_version = boost::replace_all_copy(lvs, ".", "");
-    auto remote_ip = Common::ipAddressToString(context.m_remote_ip);
-    std::string min_version = "200";
-      
-      // Check if is trusted node
-      if (std::find(std::begin(CryptoNote::TRUSTED_NODES), std::end(CryptoNote::TRUSTED_NODES), Common::ipAddressToString(context.m_remote_ip)) != std::end(CryptoNote::TRUSTED_NODES))
-      {
-      logger(Logging::DEBUGGING, Logging::BRIGHT_BLUE) << context << "CONNECTING TO TRUSTED NODE! - Skip version check!";      
-      } 
-      // Else Continue checking versions
-      /*
-      else 
-      {
-          if(local_version == remote_version)
-          {
-                logger(Logging::DEBUGGING, Logging::BRIGHT_GREEN)  << context <<  "GREAT!! Remote peer " << remote_ip << " are using same version!! (" << remote_version_str << ")";
-          }
-          else if(remote_version > min_version)
-          {
-                logger(Logging::DEBUGGING, Logging::BRIGHT_GREEN)  << context <<  "GREAT!! Remote peer " << remote_ip << " are using accepted version!! (" << remote_version_str << ")";
-          }
-          else if((local_version > remote_version) && (remote_version < min_version))
-          {
-              logger(DEBUGGING, Logging::BRIGHT_RED)  << context <<  "Daemon version on remote peer " << remote_ip << " is not up to date! (" << remote_version_str << ") Closing connection...";
-              return false;
-          }
-      }
-      */
-    // Continue
+    // Check if is trusted node
+    if (std::find(std::begin(DynexCN::TRUSTED_NODES), std::end(DynexCN::TRUSTED_NODES), Common::ipAddressToString(context.m_remote_ip)) != std::end(DynexCN::TRUSTED_NODES))
+    {
+      logger(Logging::DEBUGGING, Logging::BRIGHT_BLUE) << context << "CONNECTING TO TRUSTED NODE!";
+    } 
     
     if (!handle_remote_peerlist(rsp.local_peerlist, rsp.node_data.local_time, context)) {
       add_host_fail(context.m_remote_ip);
@@ -810,8 +769,8 @@ namespace CryptoNote
 
     forEachConnection([&](P2pConnectionContext& conn) {
       if (conn.peerId && 
-          (conn.m_state == CryptoNoteConnectionContext::state_normal || 
-           conn.m_state == CryptoNoteConnectionContext::state_idle)) {
+          (conn.m_state == DynexCNConnectionContext::state_normal || 
+           conn.m_state == DynexCNConnectionContext::state_idle)) {
         conn.pushMessage(P2pMessage(P2pMessage::COMMAND, COMMAND_TIMED_SYNC::ID, cmdBuf));
       }
     });
@@ -920,7 +879,7 @@ namespace CryptoNote
 
       try {
         System::Context<bool> handshakeContext(m_dispatcher, [&] {
-          CryptoNote::LevinProtocol proto(ctx.connection);
+          DynexCN::LevinProtocol proto(ctx.connection);
           return handshake(proto, ctx, just_take_peerlist);
         });
 
@@ -1048,7 +1007,7 @@ namespace CryptoNote
 
     if (!connect_to_peerlist(m_priority_peers)) return false;
 
-    size_t expected_white_connections = (m_config.m_net_config.connections_count * CryptoNote::P2P_DEFAULT_WHITELIST_CONNECTIONS_PERCENT) / 100;
+    size_t expected_white_connections = (m_config.m_net_config.connections_count * DynexCN::P2P_DEFAULT_WHITELIST_CONNECTIONS_PERCENT) / 100;
 
     size_t conn_count = get_outgoing_connections_count();
     if(conn_count < m_config.m_net_config.connections_count)
@@ -1135,22 +1094,22 @@ namespace CryptoNote
 
   //-----------------------------------------------------------------------------------
  
-  bool NodeServer::handle_remote_peerlist(const std::list<PeerlistEntry>& peerlist, time_t local_time, const CryptoNoteConnectionContext& context)
+  bool NodeServer::handle_remote_peerlist(const std::list<PeerlistEntry>& peerlist, time_t local_time, const DynexCNConnectionContext& context)
   {
     int64_t delta = 0;
     std::list<PeerlistEntry> peerlist_ = peerlist;
     if(!fix_time_delta(peerlist_, local_time, delta))
       return false;
     logger(Logging::TRACE) << context << "REMOTE PEERLIST: TIME_DELTA: " << delta << ", remote peerlist size=" << peerlist_.size();
-    logger(Logging::TRACE) << context << "REMOTE PEERLIST: " <<  print_peerlist_to_string(peerlist_);
+    //logger(Logging::TRACE) << context << "REMOTE PEERLIST: " <<  print_peerlist_to_string(peerlist_);
     return m_peerlist.merge_peerlist(peerlist_);
   }
   //-----------------------------------------------------------------------------------
   
   bool NodeServer::get_local_node_data(basic_node_data& node_data)
   {
+
     node_data.version = P2PProtocolVersion::CURRENT;
-	// BY CROAT
     node_data.node_version = CN_PROJECT_VERSION;   
 
     time_t local_time;
@@ -1187,7 +1146,7 @@ namespace CryptoNote
     }
 
     Crypto::PublicKey pk;
-    Common::podFromHex(CryptoNote::P2P_STAT_TRUSTED_PUB_KEY, pk);
+    Common::podFromHex(DynexCN::P2P_STAT_TRUSTED_PUB_KEY, pk);
     Crypto::Hash h = get_proof_of_trust_hash(tr);
     if (!Crypto::check_signature(h, pk, tr.sign)) {
       logger(ERROR) << "check_trust failed: sign check failed";
@@ -1203,7 +1162,7 @@ namespace CryptoNote
   int NodeServer::handle_get_stat_info(int command, COMMAND_REQUEST_STAT_INFO::request& arg, COMMAND_REQUEST_STAT_INFO::response& rsp, P2pConnectionContext& context)
   {
     if(!check_trust(arg.tr)) {
-      context.m_state = CryptoNoteConnectionContext::state_shutdown;
+      context.m_state = DynexCNConnectionContext::state_shutdown;
       return 1;
     }
     rsp.connections_count = get_connections_count();
@@ -1221,7 +1180,7 @@ namespace CryptoNote
   int NodeServer::handle_get_network_state(int command, COMMAND_REQUEST_NETWORK_STATE::request& arg, COMMAND_REQUEST_NETWORK_STATE::response& rsp, P2pConnectionContext& context)
   {
     if(!check_trust(arg.tr)) {
-      context.m_state = CryptoNoteConnectionContext::state_shutdown;
+      context.m_state = DynexCNConnectionContext::state_shutdown;
       return 1;
     }
 
@@ -1255,15 +1214,15 @@ namespace CryptoNote
 
     forEachConnection([&](P2pConnectionContext& conn) {
       if (conn.peerId && conn.m_connection_id != excludeId &&
-          (conn.m_state == CryptoNoteConnectionContext::state_normal ||
-           conn.m_state == CryptoNoteConnectionContext::state_synchronizing)) {
+          (conn.m_state == DynexCNConnectionContext::state_normal ||
+           conn.m_state == DynexCNConnectionContext::state_synchronizing)) {
         conn.pushMessage(P2pMessage(P2pMessage::NOTIFY, command, data_buff));
       }
     });
   }
  
   //-----------------------------------------------------------------------------------
-  bool NodeServer::invoke_notify_to_peer(int command, const BinaryArray& buffer, const CryptoNoteConnectionContext& context) {
+  bool NodeServer::invoke_notify_to_peer(int command, const BinaryArray& buffer, const DynexCNConnectionContext& context) {
     auto it = m_connections.find(context.m_connection_id);
     if (it == m_connections.end()) {
       return false;
@@ -1324,15 +1283,24 @@ namespace CryptoNote
   {
     if(!m_payload_handler.process_payload_sync_data(arg.payload_data, context, false)) {
       logger(Logging::DEBUGGING) << context << "Failed to process_payload_sync_data(), dropping connection";
-      context.m_state = CryptoNoteConnectionContext::state_shutdown;
+      context.m_state = DynexCNConnectionContext::state_shutdown;
       return 1;
     }
 
     //fill response
     rsp.local_time = time(NULL);
-    m_peerlist.get_peerlist_head(rsp.local_peerlist);
+    std::list<PeerlistEntry> local_peerlist_new;
+    m_peerlist.get_peerlist_head(local_peerlist_new);
+    size_t cnt = local_peerlist_new.size();
+    //only include out peers we did not already send
+    for (auto &pe : local_peerlist_new)
+    {
+      if (!context.sent_addresses.insert(pe.adr).second)
+        continue;
+      rsp.local_peerlist.push_back(std::move(pe));
+    }
     m_payload_handler.get_payload_sync_data(rsp.payload_data);
-    logger(Logging::TRACE) << context << "COMMAND_TIMED_SYNC";
+    logger(Logging::TRACE) << context << "COMMAND_TIMED_SYNC (peers: " << rsp.local_peerlist.size() << "/" << cnt << ")";
     return 1;
   }
   //-----------------------------------------------------------------------------------
@@ -1343,76 +1311,40 @@ namespace CryptoNote
 
 	if (!is_remote_host_allowed(context.m_remote_ip)) {
 		logger(Logging::DEBUGGING) << context << "Banned node connected " << Common::ipAddressToString(context.m_remote_ip) << ", dropping connection.";
-		context.m_state = CryptoNoteConnectionContext::state_shutdown;
+		context.m_state = DynexCNConnectionContext::state_shutdown;
 		return 1;
 	}
 
     if (arg.node_data.network_id != m_network_id) {
-      add_host_fail(context.m_remote_ip);
+      //add_host_fail(context.m_remote_ip);
       logger(Logging::INFO) << context << "WRONG NETWORK AGENT CONNECTED! id=" << arg.node_data.network_id;
-      context.m_state = CryptoNoteConnectionContext::state_shutdown;
+      context.m_state = DynexCNConnectionContext::state_shutdown;
+      block_host(context.m_remote_ip, 1 * 60 * 60); // 1h
       return 1;
     }
 
+    // Check if is trusted node
+    if (std::find(std::begin(DynexCN::TRUSTED_NODES), std::end(DynexCN::TRUSTED_NODES), Common::ipAddressToString(context.m_remote_ip)) != std::end(DynexCN::TRUSTED_NODES))
+    {
+      logger(Logging::DEBUGGING, Logging::BRIGHT_BLUE)  << context <<  "INCOMMING TRUSTED NODE DETECTED!";
+    }
 
-	// By DYNEX
-    //Check for latest Daemon version
-      std::string remote_version = boost::replace_all_copy(arg.node_data.node_version, ".", "");
-      
-      std::string remote_version_str = arg.node_data.node_version;
-      remote_version_str.erase(std::remove(remote_version_str.begin(), remote_version_str.end(), '\n'), remote_version_str.end());          
-          
-      std::stringstream ss;
-      ss << CN_PROJECT_VERSION;
-      std::string lvs;
-      ss >> lvs;
-      
-      auto local_version = boost::replace_all_copy(lvs, ".", "");
-      auto remote_ip = Common::ipAddressToString(context.m_remote_ip);
-      std::string min_version = "200";
-      
-      // Check if is trusted node
-      if (std::find(std::begin(CryptoNote::TRUSTED_NODES), std::end(CryptoNote::TRUSTED_NODES), Common::ipAddressToString(context.m_remote_ip)) != std::end(CryptoNote::TRUSTED_NODES))
-      {
-      logger(Logging::DEBUGGING, Logging::BRIGHT_BLUE)  << context <<  "INCOMMING TRUSTED NODE DETECTED! - Skip version check!";      
-      } 
-      // Else Continue checking versions
-      /*else 
-      {
-          if(local_version == remote_version)
-          {
-                logger(Logging::DEBUGGING, Logging::BRIGHT_GREEN)  << context <<  "GREAT!! Imcomming peer " << remote_ip << " are using same version!! (" << remote_version_str << ")";
-          }
-          else if(remote_version > min_version)
-          {
-                logger(Logging::DEBUGGING, Logging::BRIGHT_GREEN)  << context <<  "GREAT!! Imcomming peer " << remote_ip << " are using accepted version!! (" << remote_version_str << ")";
-          }
-          else if((local_version > remote_version) && (remote_version < min_version))
-          {
-              logger(DEBUGGING, Logging::BRIGHT_RED)  << context <<  "Daemon version on imcomming peer " << remote_ip << " is not up to date! (" << remote_version_str << ") Closing connection...";
-              context.m_state = CryptoNoteConnectionContext::state_shutdown;
-              return 1;
-          }
-      }*/
-	
-    // Continue
-    
     if(!context.m_is_income) {
       add_host_fail(context.m_remote_ip);
       logger(Logging::DEBUGGING) << context << "COMMAND_HANDSHAKE came not from incoming connection";
-      context.m_state = CryptoNoteConnectionContext::state_shutdown;
+      context.m_state = DynexCNConnectionContext::state_shutdown;
       return 1;
     }
 
     if(context.peerId) {
       logger(Logging::DEBUGGING) << context << "COMMAND_HANDSHAKE came, but seems that connection already have associated peer_id (double COMMAND_HANDSHAKE?)";
-      context.m_state = CryptoNoteConnectionContext::state_shutdown;
+      context.m_state = DynexCNConnectionContext::state_shutdown;
       return 1;
     }
 
     if(!m_payload_handler.process_payload_sync_data(arg.payload_data, context, true))  {
       logger(Logging::DEBUGGING) << context << "COMMAND_HANDSHAKE came, but process_payload_sync_data returned false, dropping connection.";
-      context.m_state = CryptoNoteConnectionContext::state_shutdown;
+      context.m_state = DynexCNConnectionContext::state_shutdown;
       return 1;
     }
     //associate peer_id with this connection
@@ -1437,6 +1369,9 @@ namespace CryptoNote
 
     //fill response
     m_peerlist.get_peerlist_head(rsp.local_peerlist);
+    for (const auto &e : rsp.local_peerlist) {
+      context.sent_addresses.insert(e.adr);
+    }
     get_local_node_data(rsp.node_data);
     m_payload_handler.get_payload_sync_data(rsp.payload_data);
 
@@ -1634,11 +1569,11 @@ namespace CryptoNote
         LevinProtocol::Command cmd;
 
         for (;;) {
-          if (ctx.m_state == CryptoNoteConnectionContext::state_sync_required) {
-            ctx.m_state = CryptoNoteConnectionContext::state_synchronizing;
+          if (ctx.m_state == DynexCNConnectionContext::state_sync_required) {
+            ctx.m_state = DynexCNConnectionContext::state_synchronizing;
             m_payload_handler.start_sync(ctx);
-          } else if (ctx.m_state == CryptoNoteConnectionContext::state_pool_sync_required) {
-            ctx.m_state = CryptoNoteConnectionContext::state_normal;
+          } else if (ctx.m_state == DynexCNConnectionContext::state_pool_sync_required) {
+            ctx.m_state = DynexCNConnectionContext::state_normal;
             m_payload_handler.requestMissingPoolTransactions(ctx);
           }
 
@@ -1660,7 +1595,7 @@ namespace CryptoNote
             ctx.pushMessage(P2pMessage(P2pMessage::REPLY, cmd.command, std::move(response), retcode));
           }
 
-          if (ctx.m_state == CryptoNoteConnectionContext::state_shutdown) {
+          if (ctx.m_state == DynexCNConnectionContext::state_shutdown) {
             break;
           }
         }
